@@ -1,6 +1,6 @@
 import Highlight from '../lib/Highlight.js';
 
-class HierarchyTable{
+class HierarchyParser{
   /**
    * Converts flat view rowheaders into a tree-view rowheaders with ability to switch between views.
    * After hierarchy is initialized, `HierarchyTable.data` array will reflect the rows of the table in their visible order and contain `meta` for each row in the array.
@@ -10,7 +10,6 @@ class HierarchyTable{
    * When a row is switched to tree-view, a `reportal-table-hierarchy-tree-view` Event is fired.
    * @param {HTMLTableElement} source - source table that needs a cloned header
    * @param {Array} hierarchy - array of hierarchy objects from Reportal
-   * @param {Object} rowheaders - JSON object which contains all table rowheaders with category id and index of table row
    * @param {Number} [column=0] - index of column in the table that contains hierarchy (increments from `0`)
    * @param {Boolean} [flat=false] - Should hierarchy be rendered flatly(`true`), or in a tree-fashion (`false`).
    *
@@ -25,10 +24,9 @@ class HierarchyTable{
    * @param {Array} [data=[]] - array with data if it's passed from outside, rather than acquired from the `source` (HTML table)
    * @param {Array} [blocks=[]] - array with block ids that split hierarchies
    * */
-  constructor({source,hierarchy,rowheaders,column = 0,flat = false,search={},data=[],blocks=[]} = {}){
+  constructor({source,hierarchy,column = 0,flat = false,search={},data=[],blocks=[]} = {}){
     this.source = source;
-    this.hierarchy = hierarchy;
-    this.rowheaders = rowheaders;
+    this.hierarchy = hierarchy.rowheaders;
     this.column = column;
     this.blocks = blocks;
     this._rows = source.parentNode.querySelectorAll(`table#${source.id}>tbody>tr`);
@@ -37,6 +35,7 @@ class HierarchyTable{
     this._flatEvent = this.constructor.newEvent('reportal-table-hierarchy-flat-view');
     this._treeEvent = this.constructor.newEvent('reportal-table-hierarchy-tree-view');
     this.data = this.setUpBlocks(data,blocks);
+    console.log(this.data);
     this.flat = flat;
     this.search = this.setupSearch(search);
     this.__lastEffectiveParent = null;// we'll store row of parent when doing search for effectiveness of children recursion in `searchRowheaders`
@@ -62,11 +61,11 @@ class HierarchyTable{
   reorderRows(data,tbody=this.source.querySelector('tbody')){
     data.forEach(block=>{
       block.forEach((row,index,array)=>{
-        if(row.meta.block && index==0 && !row.meta.firstInBlock){ //block is defined and this is the first row in block (and doesn't contain block header already), we need to move block header from whatever line into this row
+        if(row.meta.block!=null && index==0 && !row.meta.firstInBlock){ //block is defined and this is the first row in block (and doesn't contain block header already), we need to move block header from whatever line into this row
           let blockContainer = array.find(item=>item.meta.firstInBlock);
           blockContainer.meta.firstInBlock = false;
           row.meta.firstInBlock = true;
-          row.meta.row.insertBefore(data[row.meta.block].cell, row.meta.row.firstChild);
+          row.meta.row.insertBefore(row.meta.block.cell, row.meta.row.firstChild);
         }
         tbody.appendChild(row.meta.row);
       })
@@ -131,7 +130,6 @@ class HierarchyTable{
   /**
    * This function builds a prototype for each row
    * @param {HTMLTableRowElement} row - reference to the `<tr>` element
-   * @param {String} id - internal Reportal id for the row
    * @param {String} flatName - default string name ('/'-delimited) for hierarchy
    * @param {String} name - a trimmed version of `flatName` containing label for this item without parent suffices
    * @param {HTMLTableCellElement} nameCell - reference to the `<td>` element that contains the rowheader hierarchical label/name
@@ -143,18 +141,19 @@ class HierarchyTable{
    * @param {Boolean} [collapsed=undefined] - flag only set to rows which have children (`hasChildren=true`)
    * @param {Boolean} [matches=false] - flag set to those rows which match `search.query`
    * @param {Boolean} [hasChildren=false] - flag set to rows which contain children
+   * @param {Array} children=[] - child rows if `hasChildren == true`
    * */
-  setupMeta({row,id,flatName,name,nameCell,block,firstInBlock,parent,level,hidden=true,collapsed,matches=false,hasChildren=false}={}){
+  setupMeta({row, flatName, name, nameCell, block, firstInBlock, parent, level, hidden=true, collapsed, matches=false, hasChildren=false, children=[]}={}){
     let _hidden = hidden, _collapsed = collapsed, _hasChildren=hasChildren, _matches = matches, self=this;
     return {
       row,
-      id,
       nameCell,
       flatName,
       name,
       block,
       firstInBlock,
       parent,
+      children,
       level,
       get hasChildren(){return _hasChildren},
       set hasChildren(val){
@@ -270,7 +269,8 @@ class HierarchyTable{
       }
     } else {
       arr[0]=[];
-      this.parseHierarchy({array: arr[0], block:null});
+      let rows = [].slice.call(this.source.parentNode.querySelectorAll(`table#${this.source.id}>tbody>tr`));
+      this.parseHierarchy({array: arr[0], block:null, rows, parent:null});
     }
     return arr;
   }
@@ -301,63 +301,66 @@ class HierarchyTable{
    * @param {Array} array=[] - changedTable for children level
    * @return {Array}
    */
-  parseHierarchy({hierarchy=this.hierarchy,level=0,block,array=[]}={}){
-    let rows = this.source.parentNode.querySelectorAll(`table#${this.source.id}>tbody>tr`),
-        blockName = block && block!==null? block.name.toLowerCase() : null,
+  parseHierarchy({hierarchy=this.hierarchy,level=0,rows,block,array=[],parent=null}={}){
+    let blockName = block && block!==null? block.name.toLowerCase() : null,
         blockRowIndex =  block && block!==null? block.cell.parentNode.rowIndex : null;
-    return hierarchy.reduce((resultArray,item,index)=>{
-        let compoundID =  block && block!==null? `${item.id}_${blockName}` : item.id;
-        if(this.rowheaders[compoundID]){
-          let row = rows[this.rowheaders[compoundID].index];
-          let firstInBlock = block!==null && row.rowIndex === blockRowIndex; //this row is first in the block, which means it contains the first cell as a block cell and we need to indent the cell index when changing names in hierarchical column
-          //we need to push to the array before we add arrows/circles to labels so that we have clean labels in array and may sort them as strings
-          resultArray.push(
-            [].slice.call(row.children).reduce(
-              (rowArray,current)=>{
-                if(!(firstInBlock && current == block.cell)){
-                  rowArray.push(current.children.length == 0 ? this.constructor._isNumber(current.textContent.trim()) : current.innerHTML)
-                }
-                return rowArray;
-              },[])
-          );
+    hierarchy.forEach((levelItem)=>{ //{text:String, isTotal:Boolean,subcells:Array}
+      if((levelItem.isTotal == "True" && ((array.length == rows.length-1 && parent==null) || array.length==0)) || levelItem.isTotal!="True"){
+        let row = rows[array.length];
+        let firstInBlock = block!==null && row.rowIndex === blockRowIndex; //this row is first in the block, which means it contains the first cell as a block cell and we need to indent the cell index when changing names in hierarchical column
+        //we need to push to the array before we add arrows/circles to labels so that we have clean labels in array and may sort them as strings
+        array.push(
+          [].slice.call(row.children).reduce(
+            (rowArray,current)=>{
+            if(!(firstInBlock && current == block.cell)){
+              rowArray.push(current.children.length == 0 ? this.constructor._isNumber(current.textContent.trim()) : current.innerHTML)
+            }
+            return rowArray;
+          },[])
+        );
+        let currentRowArray = array[array.length - 1];
 
-          let currentRowArray = resultArray[resultArray.length - 1];
+      //build a prototype for a row
+      currentRowArray.meta = this.setupMeta({
+        row,
+        block: block,
+        firstInBlock,
+        parent: parent,
+        name: decodeURIComponent(levelItem.text),
+        flatName: decodeURIComponent(levelItem.text),
+        nameCell: row.children.item(block!==null ? (firstInBlock? this.column: this.column-1) : this.column),
+        level,
+        hasChildren: levelItem.hasOwnProperty('subcells')
+      });
 
-          //build a prototype for a row
-          currentRowArray.meta = this.setupMeta({
-            row,
-            id: item.id,
-            block: this.rowheaders[compoundID].blockId,
-            firstInBlock,
-            flatName: item.name,
-            name: item.name.split('/').reverse()[0].trim(),
-            nameCell: row.children.item(block!==null ? (firstInBlock? this.column: this.column-1) : this.column ),
-            parent: item.parent,
-            level,
-            hasChildren: item.children.length > 0
-          });
+      currentRowArray.meta.flatName=this.composeFlatParentName(currentRowArray.meta);
+
+      currentRowArray.meta.hasChildren = levelItem.hasOwnProperty('subcells');
+
+      row.classList.add("level" + level.toString());
+
+      if (level > 0) {
+        currentRowArray.meta.hidden = true;
+        this.constructor.clearLink(row);
+      }
+        currentRowArray.meta.collapsed = currentRowArray.meta.hasChildren;
+
+      // we want to add the child to the parent for quick access to all childrent of the parent
+      if(currentRowArray.meta.parent!=null){
+        currentRowArray.meta.parent.meta.children.push(currentRowArray);
+      }
+
+      // adds a toggle button
+      this.constructor.addCollapseButton(currentRowArray.meta);
+      // initializes row headers according to `this.flat`
+      this.updateCategoryLabel(currentRowArray);
 
 
-          row.classList.add("level" + level.toString());
-
-          if (level > 0) {
-            currentRowArray.meta.hidden = true;
-            this.constructor.clearLink(row);
-          }
-          if (item.children.length > 0) {
-            currentRowArray.meta.collapsed = true;
-          }
-
-          // adds a toggle button
-          this.constructor.addCollapseButton(currentRowArray.meta);
-          // initializes row headers according to `this.flat`
-          this.updateCategoryLabel(currentRowArray);
-
-          level < 2 ? resultArray = this.parseHierarchy({hierarchy:item.children, level:level + 1, array:resultArray, block}) : null;
-        }
-
-      return resultArray
-    },array);
+      if (currentRowArray.meta.hasChildren) {
+        this.parseHierarchy({hierarchy: levelItem.subcells, level: level + 1, array, block, rows, parent:currentRowArray})
+      }
+    }
+  });
   }
 
 
@@ -378,11 +381,11 @@ class HierarchyTable{
    * @param {HTMLTableRowElement} row - row element in the table
    * */
     static clearLink(row){
-    var link = row.querySelector("a");
-    if(link) {
-      link.parentElement.textContent = link.textContent;
+      var link = row.querySelector("a");
+      if(link) {
+        link.parentElement.textContent = link.textContent;
+      }
     }
-  }
 
   /**
    * function to add button to the left of the rowheader
@@ -411,10 +414,8 @@ class HierarchyTable{
    * @param {Object} meta - meta for the row element in the table
    */
   toggleHiddenRows(meta){
-    if(meta.hasChildren && this.data){
-      let dataSource = meta.block?this.data[meta.block].data:this.data[0];
-      let children = dataSource.filter(row=>row.meta.parent==meta.id);
-      children.forEach(childRow=>{
+    if(meta.hasChildren){
+      meta.children.forEach(childRow=>{
         if(meta.collapsed){                                           // if parent (`meta.row`) is collapsed
           childRow.meta.hidden=true;                                  // hide all its children and
           if(childRow.meta.hasChildren && !childRow.meta.collapsed){  // if a child can be collapsed
@@ -433,33 +434,25 @@ class HierarchyTable{
    * @param {String} str - expression to match against (is contained in `this.search.query`)
    * */
   searchRowheaders(str){
-    let regexp = new RegExp('('+str+')','i');
+    let regexp = new RegExp(`(${str})`,'i');
     this.data.forEach((block,blockIndex)=>{
       block.forEach(row=>{
         if(this.flat){
           row.meta.matches = regexp.test(row.meta.flatName);
           row.meta.hidden=false;
         } else {
-          let parent; // we want to temporarily store the parent for recursion to be computationally effective and not to perform filtering of `data` on every sneeze
-         if(row.meta.parent.length>0 && this.__lastEffectiveParent!=null && this.__lastEffectiveParent.meta.id == row.meta.parent){
-           parent = this.__lastEffectiveParent;
-         } else {
-           //console.log(this.data[blockIndex]);
-           parent = this.__lastEffectiveParent = this.data[blockIndex].find((parentRow)=>{return parentRow.meta.id==row.meta.parent});
-         }
-        // if it has a parent and maybe not matches and the parent has match, then let it and its children be displayed
-        if(row.meta.parent.length>0 && !regexp.test(row.meta.name) && parent.meta.matches){
-            // just in case it's been covered in previous iteration
-            if(!row.meta.matches){row.meta.matches=true}
-            row.meta.hidden=parent.meta.collapsed;
-
+          // if it has a parent and maybe not matches and the parent has match, then let it and its children be displayed
+          if(row.meta.parent !=null && !regexp.test(row.meta.name) && row.meta.parent.meta.matches){
+              // just in case it's been covered in previous iteration
+              if(!row.meta.matches){row.meta.matches=true}
+              row.meta.hidden=row.meta.parent.meta.collapsed;
           } else { // if has no parent or parent not matched let's test it, maybe it can have a match, if so, display his parents and children
-            let matches = regexp.test(row.meta.name);
-            row.meta.matches = matches;
+              let matches = regexp.test(row.meta.name);
+              row.meta.matches = matches;
               if(matches){
-                this.uncollapseParents(row.meta);
+                  this.uncollapseParents(row.meta);
               }
-            }
+          }
         }
       });
     });
@@ -485,19 +478,26 @@ class HierarchyTable{
    * @param {Object} meta - `row.meta` object. See {@link HierarchyTable#setupMeta} for details
    * */
   uncollapseParents(meta){
-    if(meta.parent.length>0){ // if `parent` String is not empty - then it's not top level parent.
-      let dataSource = meta.block?this.data[meta.block].data:this.data[0],
-          parent = dataSource.find(row => row.meta.id==meta.parent);
-      if(parent.meta.collapsed){parent.meta.collapsed=false}
-      parent.meta.row.classList.add('matched-search');
-      this.uncollapseParents(parent.meta);
+    if(meta.parent!=null){ // if `parent` String is not empty - then it's not top level parent.
+      if(meta.parent.meta.collapsed){meta.parent.meta.collapsed=false}
+      meta.parent.meta.row.classList.add('matched-search');
+      this.uncollapseParents(meta.parent.meta);
     }
+  }
+  /**
+   * Creates a full flat name for a hierarchical level by concatenating `name` with `meta.parent.name` via a `delimiter`
+   * @param {Object} meta - meta data of the row
+   * @param {String=} [name=meta.name] - initial name to start with
+   * @param {String=} [delimiter='|'] - delimiter to separate flattened labels from each other
+   * @return {String} Returns a flat name starting with top level of hierarchy
+   * */
+  composeFlatParentName(meta, name=meta.name, delimiter='|'){
+    var newName=name;
+    if(meta.parent!=null){
+      newName = this.composeFlatParentName(meta.parent.meta, [meta.parent.meta.name, delimiter, newName].join(' '));
+    }
+    return newName
   }
 
 }
-
-/*Array.prototype.slice.call(document.querySelectorAll('table.reportal-hierarchy-table:not(.fixed)')).forEach((table)=>{
-  var hierarchyTable= new HierarchyTable({source:table,hierarchy:hierarchy,rowheaders:rowheaders,flat:true});
-});*/
-
-export default HierarchyTable;
+export default HierarchyParser;

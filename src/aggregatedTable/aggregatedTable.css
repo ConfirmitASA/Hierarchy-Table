@@ -1,3 +1,6 @@
+:root{
+  --reportal-hierarchy-offset: 20px;
+};
 .reportal-table{
   width:100%;
   font-size:14px;
@@ -197,102 +200,112 @@
         position: relative;
         color:#424242;
       }
+  }
+
+  &.fixed{/* fixed header table*/
+     position:absolute;
+     top:0;
+     width:auto;
+     display:none;
+     border:none;
+  }
+
+  &.reportal-hierarchy-table{ /*Hierarchy styles*/
+     &>tbody>tr>td:first-child:not(.reportal-hierarchical-cell) {
+       /*dirty hack for breakdown first column to stay really narrow*/
+       width: 50px;
+       white-space: normal;
+     }
+     & tr.level0 {
+         font-weight: bold;
+     }
+     & .reportal-hierarchical-header{
+        padding-right:100px;
+        position:relative;
+     }
+     & td.reportal-hierarchical-cell {padding-left:0}
+     & tr.level1>td.reportal-hierarchical-cell {
+        padding-left: var(--reportal-hierarchy-offset);
+     }
+     & tr.level2>td.reportal-hierarchical-cell {
+        padding-left: calc(var(--reportal-hierarchy-offset) * 2);
+     }
+     & tr.level3>td.reportal-hierarchical-cell {
+        padding-left: calc(var(--reportal-hierarchy-offset) * 3);
+     }
+     & tr.level4>td.reportal-hierarchical-cell {
+        padding-left: calc(var(--reportal-hierarchy-offset) * 4);
+     }
+     & tr.level5>td.reportal-hierarchical-cell {
+        padding-left: calc(var(--reportal-hierarchy-offset) * 5);
+     }
+     & tr.level6>td.reportal-hierarchical-cell {
+        padding-left: calc(var(--reportal-hierarchy-offset) * 6);
+     }
+     & tr.level7>td.reportal-hierarchical-cell {
+        padding-left: calc(var(--reportal-hierarchy-offset) * 7);
+     }
+     & tr.level8>td.reportal-hierarchical-cell {
+        padding-left: calc(var(--reportal-hierarchy-offset) * 8);
+     }
+     & tr.level9>td.reportal-hierarchical-cell {
+        padding-left: calc(var(--reportal-hierarchy-offset) * 9);
+     }
+     & .reportal-collapse-button {
+         width: 24px;
+         height: 24px;
+         display: inline-block;
+         position: relative;
+         vertical-align: middle;
+         cursor: pointer;
+         &:before{
+           content:'';
+           position: absolute;
+           border-color: #737B8E transparent transparent;
+           border-style: solid;
+           border-width: 5px 5px 0;
+           display: block;
+           height: 0;
+           width: 0;
+           left:30%;
+           top:33%;
+           transition: .25s transform ease-in-out;
+         }
+     }
+     & .reportal-collapsed-row .reportal-collapse-button:before{
+        transform:rotate(-90deg);
+     }
+     & .reportal-no-children .reportal-collapse-button:before {
+        content:'';
+        width: 6px;
+        height: 6px;
+        border: 1px solid var(--neutral-color, #cdd1d9);
+        border-radius: 50%;
+        position:absolute;
+        top:33%;
+        left:30%;
+     }
+     &:not(.reportal-heirarchy-flat-view)>tbody>tr.reportal-hidden-row>td:not([rowspan]){
+        display: none;
+     }
+    &.reportal-heirarchy-flat-view>tbody>tr>td{
+        display:table-cell;
+      &.reportal-hierarchical-cell{
+         padding-left:8px !important;
+          &>.reportal-collapse-button{display:none}
+      }
     }
+  }
+  &.reportal-hierarchy-searching>tbody>tr{
+    &>td:not([rowspan]){display:none;}
+    &.matched-search:not(.reportal-hidden-row)>td{display:table-cell}
+  }
 }
 
-/* fixed header table*/
-.reportal-table.fixed{
-  position:absolute;
-  top:0;
-  width:auto;
-  display:none;
-  border:none;
-}
 .aggregatedTableContainer{
   position: relative;
   width:100%;
   overflow-x: auto;
 }
 
-/*Hierarchycal styles*/
-.reportal-hierarchy-table tr.level0 {
-  font-weight: bold;
-}
-.reportal-hierarchy-table>tbody>tr>td:first-child:not(.reportal-hierarchical-cell) {
-  /*dirty hack for breakdown first column to stay really narrow*/
-  width: 50px;
-  white-space: normal;
-}
-
-.reportal-hierarchy-table .reportal-hierarchical-header{
-  padding-right:100px;
-}
-
-.reportal-hierarchy-table td.reportal-hierarchical-cell {padding-left:0}
-
-.reportal-hierarchy-table tr.level1>td.reportal-hierarchical-cell {
-  padding-left: 20px;
-}
-
-.reportal-hierarchy-table tr.level2>td.reportal-hierarchical-cell {
-  padding-left: 40px;
-}
-
-.reportal-collapse-button {
-  width: 24px;
-  height: 24px;
-  display: inline-block;
-  position: relative;
-  vertical-align: middle;
-}
-.reportal-collapsed-row .reportal-collapse-button:before,
-.reportal-uncollapsed-row .reportal-collapse-button:before{
-  content:'';
-  position: absolute;
-  border-color: #737B8E transparent transparent;
-  border-style: solid;
-  border-width: 5px 5px 0;
-  display: block;
-  height: 0;
-  width: 0;
-  left:30%;
-  top:33%;
-  transition: .25s transform ease-in-out;
-}
-
-.reportal-collapsed-row .reportal-collapse-button,
-.reportal-uncollapsed-row .reportal-collapse-button{
-  cursor: pointer;
-}
-
-.reportal-collapsed-row .reportal-collapse-button:before{
-  transform:rotate(-90deg);
-}
-
-.reportal-no-children .reportal-collapse-button:before {
-  content:'';
-  width: 6px;
-  height: 6px;
-  border: 1px solid var(--neutral-color, #cdd1d9);
-  border-radius: 50%;
-  position:absolute;
-  top:33%;
-  left:30%;
-}
-
-.reportal-hierarchy-table:not(.reportal-heirarchy-flat-view)>tbody>tr.reportal-hidden-row>td:not([rowspan]){
-  display: none;
-}
-
-.reportal-heirarchy-flat-view>tbody>tr>td{
-  display:table-cell;
-  &.reportal-hierarchical-cell{
-    padding-left:8px !important;
-    &>.reportal-collapse-button{display:none}
-  }
-}
-.reportal-hierarchy-searching>tbody>tr{
-  &>td:not([rowspan]){display:none;}
-  &.matched-search:not(.reportal-hidden-row)>td{display:table-cell}
-}
 

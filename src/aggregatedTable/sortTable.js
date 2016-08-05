@@ -113,8 +113,9 @@ class SortTable{
         auxHeaderColumns.unshift(auxHeaderRows.item(0));
       }
     }
+    var realColumnIndex=0;
     return headerColumns.map((cell,index)=>{
-        let sortable = (!(columns && columns.indexOf(td.cellIndex)==-1) || (excluded && excluded.indexOf(index)==-1)); // is in columns and not in excluded,
+        let sortable = (!(columns && columns.indexOf(cell.cellIndex)==-1) || (excluded && excluded.indexOf(index)==-1)); // is in columns and not in excluded,
         if(sortable){
           cell.addEventListener('click',(el)=>{
             if(el.target.localName =='td'||el.target.localName =='th'){this.updateSorting(el.target);} //we want to capture click on the cell and not buttons in it
@@ -131,7 +132,7 @@ class SortTable{
         }
         let _sorted = null,
           self = this;
-       return {
+       var obj = {
          sortable:sortable,
          get sorted(){return _sorted},
          set sorted(val){
@@ -144,10 +145,14 @@ class SortTable{
              this.auxCell?this.auxCell.classList.remove('sorted','asc','desc'):null;
            }
          },
-         index,
+         index: realColumnIndex,
          cell: cell,
          auxCell: auxCell
-       }
+       };
+       if(cell.colSpan>1){
+         realColumnIndex= realColumnIndex + cell.colSpan;
+       } else {realColumnIndex++}
+       return obj;
     });
   }
 
@@ -158,11 +163,11 @@ class SortTable{
   sort(){
     if(this.sortOrder && this.sortOrder.length>0){
       this.data.forEach((block,index,array)=>{
-        block.sort((a, b)=>{ // sort rows
+      block.sort((a, b)=>{ // sort rows
           if(this.sortOrder.length>1){
-            return this.constructor.sorter(a[this.sortOrder[0].column],b[this.sortOrder[0].column], this.sortOrder[0].direction === 'desc' ? -1 : 1) || this.constructor.sorter(a[this.sortOrder[1].column],b[this.sortOrder[1].column], this.sortOrder[1].direction === 'desc' ? -1 : 1)
+            return this.constructor.sorter(a[this.columns[this.sortOrder[0].column].index],b[this.columns[this.sortOrder[0].column].index], this.sortOrder[0].direction === 'desc' ? -1 : 1) || this.constructor.sorter(a[this.columns[this.sortOrder[1].column].index],b[this.columns[this.sortOrder[1].column].index], this.sortOrder[1].direction === 'desc' ? -1 : 1)
           } else {
-            return this.constructor.sorter(a[this.sortOrder[0].column],b[this.sortOrder[0].column], this.sortOrder[0].direction === 'desc' ? -1 : 1);
+            return this.constructor.sorter(a[this.columns[this.sortOrder[0].column].index],b[this.columns[this.sortOrder[0].column].index], this.sortOrder[0].direction === 'desc' ? -1 : 1);
           }
         });
       });

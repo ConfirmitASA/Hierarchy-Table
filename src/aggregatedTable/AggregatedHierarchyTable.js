@@ -2,11 +2,11 @@
  * Created by IvanP on 04.07.2016.
  */
 
-import HierarchyTable from './hierarchyTable.js';
+import HierarchyParser from './HierarchyParser.js';
 import FixedHeader from './FixedHeader.js';
 import SortTable from './SortTable.js';
 
-class AggregatedTable{
+class AggregatedHierarchyTable{
   /**
    * A class that unifies work with Aggregated tables. Enabling a fixed header, search functionality, sorting, hierarchy etc can be done here.
    * @param {HTMLTableElement} table - table on which the action is to be performed
@@ -20,7 +20,7 @@ class AggregatedTable{
     if(hierarchy && typeof hierarchy == 'object'){
       // initialize hierarchy column to be parsed and presented as tree
       hierarchy.source = hierarchy.source||table;
-      this.hierarchy = new HierarchyTable(hierarchy);
+      this.hierarchy = new HierarchyParser(hierarchy);
       this.data = this.hierarchy.data;
       //initialize buttons that will toggle between flat and tree view
       let buttonHost = this.hierarchy.source.querySelector('.reportal-hierarchical-header');
@@ -111,6 +111,7 @@ class AggregatedTable{
             sortedData.push(row);
             this.reorderSorted(dataLevels,row,sortedData);
           });
+      console.log(this.data);
           this.data[index] = sortedData;
       });
     }
@@ -137,13 +138,13 @@ class AggregatedTable{
    * @param {Array} row - parent row
    * @param {Array} output - an array the rows will be appended which is a result array
    * */
-  reorderSorted(source,row,output,insertAtIndex = output.length){
+  reorderSorted(source,row,output,insertAtIndex=output.length){
       if(row.meta.hasChildren){
-        let parent = row.meta.id,
+        let parent = row.meta.parent,
             childLevel = source[row.meta.level+1],
             childLevelLength = childLevel.length;
         while(childLevelLength--){
-          if(childLevel[childLevelLength].meta.parent==parent){
+          if(childLevel[childLevelLength].meta.parent.meta.row==row.meta.row){
             //since we go backwards (to reduce array for the next iteration), we'll always want to add the row at `output.length`,
             // which technically is right after the parent insertion point
             output.splice(insertAtIndex,0,childLevel[childLevelLength]);
@@ -352,4 +353,4 @@ class AggregatedTable{
 
 }
 
-export default AggregatedTable;
+export default AggregatedHierarchyTable;
