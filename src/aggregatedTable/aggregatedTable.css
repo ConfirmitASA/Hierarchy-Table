@@ -275,7 +275,8 @@
      & .reportal-collapsed-row .reportal-collapse-button:before{
         transform:rotate(-90deg);
      }
-     & .reportal-no-children .reportal-collapse-button:before {
+     & .reportal-no-children .reportal-collapse-button:before,
+     & .reportal-row-loading .reportal-collapse-button:before{
         content:'';
         width: 6px;
         height: 6px;
@@ -285,6 +286,13 @@
         top:33%;
         left:30%;
      }
+      & .reportal-row-loading  .reportal-collapse-button:before{
+          -webkit-animation: pulse .9s alternate ease-in-out infinite;
+          animation: pulse .9s alternate ease-in-out infinite;
+          border:0;
+          width:8px;
+          height:8px;
+      }
      &:not(.reportal-heirarchy-flat-view)>tbody>tr.reportal-hidden-row>td:not([rowspan]){
         display: none;
      }
@@ -308,4 +316,11 @@
   overflow-x: auto;
 }
 
-
+@keyframes pulse {
+  from {
+    background-color:transparent;
+  }
+  to {
+    background-color:rgba(0,0,0,.5);
+  }
+}

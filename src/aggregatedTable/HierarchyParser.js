@@ -24,18 +24,18 @@ class HierarchyParser{
    * @param {Array} [data=[]] - array with data if it's passed from outside, rather than acquired from the `source` (HTML table)
    * @param {Array} [blocks=[]] - array with block ids that split hierarchies
    * */
-  constructor({source,hierarchy,column = 0,flat = false,search={},data=[],blocks=[]} = {}){
+  constructor({source,hierarchy,column = 0,flat = false,search={},data=[],blocks=[],excludedRows=[]} = {}){
     this.source = source;
     this.hierarchy = hierarchy.rowheaders;
     this.column = column;
     this.blocks = blocks;
+    this.excludedRows = excludedRows;
     this._rows = source.parentNode.querySelectorAll(`table#${source.id}>tbody>tr`);
     this._collapseEvent = this.constructor.newEvent('reportal-table-hierarchy-collapsed');
     this._uncollapseEvent = this.constructor.newEvent('reportal-table-hierarchy-uncollapsed');
     this._flatEvent = this.constructor.newEvent('reportal-table-hierarchy-flat-view');
     this._treeEvent = this.constructor.newEvent('reportal-table-hierarchy-tree-view');
     this.data = this.setUpBlocks(data,blocks);
-    console.log(this.data);
     this.flat = flat;
     this.search = this.setupSearch(search);
     this.__lastEffectiveParent = null;// we'll store row of parent when doing search for effectiveness of children recursion in `searchRowheaders`
@@ -158,14 +158,14 @@ class HierarchyParser{
       get hasChildren(){return _hasChildren},
       set hasChildren(val){
         _hasChildren = val;
-        if(typeof val!=undefined && !val){
-          this.row.classList.add('reportal-no-children');
+        if(typeof val!=undefined){
+        !val?this.row.classList.add('reportal-no-children'):this.row.classList.remove('reportal-no-children');
         }
       },
       get hidden(){return _hidden},
       set hidden(val){
         _hidden=val;
-        val?this.row.classList.add("reportal-hidden-row"):this.row.classList.remove("reportal-hidden-row");
+        if(typeof val!=undefined){val?this.row.classList.add("reportal-hidden-row"):this.row.classList.remove("reportal-hidden-row");}
       },
       get collapsed(){return _collapsed},
       set collapsed(val){
@@ -309,15 +309,7 @@ class HierarchyParser{
         let row = rows[array.length];
         let firstInBlock = block!==null && row.rowIndex === blockRowIndex; //this row is first in the block, which means it contains the first cell as a block cell and we need to indent the cell index when changing names in hierarchical column
         //we need to push to the array before we add arrows/circles to labels so that we have clean labels in array and may sort them as strings
-        array.push(
-          [].slice.call(row.children).reduce(
-            (rowArray,current)=>{
-            if(!(firstInBlock && current == block.cell)){
-              rowArray.push(current.children.length == 0 ? this.constructor._isNumber(current.textContent.trim()) : current.innerHTML)
-            }
-            return rowArray;
-          },[])
-        );
+        array.push(this.stripRowData(row,firstInBlock && current == block.cell));
         let currentRowArray = array[array.length - 1];
 
       //build a prototype for a row
@@ -345,7 +337,7 @@ class HierarchyParser{
       }
         currentRowArray.meta.collapsed = currentRowArray.meta.hasChildren;
 
-      // we want to add the child to the parent for quick access to all childrent of the parent
+      // we want to add the child to the parent for quick access to all children of the parent
       if(currentRowArray.meta.parent!=null){
         currentRowArray.meta.parent.meta.children.push(currentRowArray);
       }
@@ -361,6 +353,21 @@ class HierarchyParser{
       }
     }
   });
+  }
+
+  /**
+   * Strips row data from `row` cells and normalizes it (converts string numbers to float, etc)
+   * @param {HTMLTableRowElement} row - table row to be stripped of data
+   * @param {Boolean} [isBlockCell=false] - if table contains block cells that rowspan across several rows, we need to exclude those from actual data
+   * @return {Array} Returns array of normalized cell values
+   * */
+  stripRowData(row, isBlockCell=false){
+    return [].slice.call(row.children).reduce((childRows,current)=>{
+      if(!isBlockCell){
+        childRows.push(current.children.length == 0 ? this.constructor._isNumber(current.textContent.trim()) : (current.innerHTML).trim())
+      }
+      return childRows;
+    },[])
   }
 
 
