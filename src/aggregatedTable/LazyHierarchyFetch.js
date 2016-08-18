@@ -35,7 +35,6 @@ class LazyHierarchyFetch extends HierarchyBase{
     if(hierarchyID){this.hierarchyID=hierarchyID;} else { throw new ReferenceError('`hierarchyID` is not specified for DynamicDrilldownFetch')}
     if(hierarchyControlID){this.hierarchyControlID = hierarchyControlID;} else { throw new ReferenceError('`hierarchyControlID` is not specified for DynamicDrilldownFetch')}
     this.blocks = blocks;
-    console.log(excludedRows,Array.isArray(excludedRows));
     this.languageCode = languageCode;
     if(excludedRows && Array.isArray(excludedRows)){this.excludedRows=excludedRows;} else {throw new ReferenceError('`excludedRows` must be an `Array`')}
     this.column=column;
@@ -56,7 +55,7 @@ class LazyHierarchyFetch extends HierarchyBase{
    * @param {Array} blocks - array of `blocks` passed in constructor
    * */
   setUpBlocks(data,blocks){
-    //if(data.length>0){return data} //if data was already passed, use it, we assume it's ready prepared
+    if(data.length>0){return data} //if data was already passed, use it, we assume it's ready prepared
     var arr = [];
     if(blocks && blocks.length>0){
       var tdBlocks = this.source.parentNode.querySelectorAll(`table#${this.source.id}>tbody>tr>td:nth-child(${this.column})[rowspan]`);
@@ -78,7 +77,7 @@ class LazyHierarchyFetch extends HierarchyBase{
 
 
   /**
-   * Recursive function taking rows according to `hierarchy` object, adding information to that row, retrieving data from the row, and adding this array to `this.data`
+   * Recursive function taking rows from each `block` and adding information to that row, retrieving data from the row, and adding this array to `this.data[block]`
    * Each item in the array has a `meta {Object}` (See {@link HierarchyTable#setupMeta}) property that has the following structure:
    *
    * ``` javascript
@@ -102,10 +101,10 @@ class LazyHierarchyFetch extends HierarchyBase{
    * @param {String} block=null - an item from `blocks` array
    * @param {Array} array=[] - changedTable for children level
    * @return {Array}
+   *
    */
 
   parseHierarchy({level=0,rows,block,array=[],parent=null}={}){
-    console.log([].slice.call(this.source.parentNode.querySelectorAll(`table#${this.source.id}>tbody>tr`)));
     [].slice.call(this.source.parentNode.querySelectorAll(`table#${this.source.id}>tbody>tr`)).forEach((row,index)=>{
       var data = this.stripRowData(row, block && block!==null && row.rowIndex === block.cell.parentNode.rowIndex);
       array.push(data);
@@ -118,28 +117,39 @@ class LazyHierarchyFetch extends HierarchyBase{
 
   }
 
-  parseHierarchyRow({row, id, parentID=null, data, array, level=0,block,parent=null}={}, getChildren=false, isSecondFetch = false){
-      let blockName = block && block!==null? block.name.toLowerCase() : null,
-        blockRowIndex =  block && block!==null? block.cell.parentNode.rowIndex : null;
-
-      let firstInBlock = block!==null && row.rowIndex === blockRowIndex; //this row is first in the block, which means it contains the first cell as a block cell and we need to indent the cell index when changing names in hierarchical column
+  /**
+   * Parses a row in the hierarchy, sets up its meta and fetches childrent of the row if necessary
+   * @param {HTMLTableRowElement} row  - table row to be parsed
+   * @param {String} id - id of the row
+   * @param {!String} parentID - parent ID of the parent row
+   * @param {Array} data - row data
+   * @param {Array} array - array of row datas within a block
+   * @param {Number} level=0 - level in hierarchy
+   * @param {?Object} block - block in which the row is contained if any
+   * @param {?Object} parent - parent row of the row in question
+   * @param {Boolean=} [getChildren=false] - flag to fetch children of a row in question
+   * @param {Boolean=} [isSecondFetch=false] - flag denoting that it's the second time this function is run on the row and there's no need to construct meta for it
+   * */
+  parseHierarchyRow({row, id, parentID=null, data, array, level=0, block,parent=null}={}, getChildren=false, isSecondFetch = false){
+    let blockName = null, firstInBlock = false;
+    if(block!==null){
+      blockName = block.name.toLowerCase();
+      firstInBlock = row.rowIndex === block.cell.parentNode.rowIndex; //this row is first in the block, which means it contains the first cell as a block cell and we need to indent the cell index when changing names in hierarchical column
+    }
       if(!isSecondFetch){
-
-        //row.setAttribute('data-uid', id);
       row.classList.add("level" + level.toString());
       if(!data.meta){
         //build a prototype for a row
         let nameCell = row.children.item(block!==null ? (firstInBlock? this.column: this.column-1) : this.column);
-        data.meta = this.setupMeta({
+        data.meta = new this.setupMeta({
           row,
           id,
+          level,
           block: block,
-          firstInBlock,
           nameCell: nameCell,
           parent: parent,
           name: nameCell.textContent.trim(),
-          flatName: nameCell.textContent.trim(),
-          level
+          flatName: nameCell.textContent.trim()
         });
         this.fixDrilldownLink(data.meta); //disable native drilldown and add our own.
       }
@@ -204,6 +214,9 @@ class LazyHierarchyFetch extends HierarchyBase{
     }
   }
 
+  /**
+   * Listens for a row to be expanded on table and when it's expanded executes `parseHierarchyRow` on the row to fetch its children
+   * */
   setUpExpandListener(){
     this.source.addEventListener('reportal-table-hierarchy-uncollapsed', e=>{
       this.data.forEach(block=>{
@@ -295,12 +308,20 @@ class LazyHierarchyFetch extends HierarchyBase{
     return rows;
   }
 
+  /**
+   * Disables native drilldown and simulated hierarchy component selection, since that would be the behavior of a drilldown on a component
+   * @param {Object} meta - meta object on the row.
+   * */
   fixDrilldownLink(meta){
     var a = meta.nameCell.querySelector('.tbl-dd-trigger');
     a.classList.remove('tbl-dd-trigger');
     a.addEventListener('click',e=>this.triggerDrilldown(meta.id));
   }
 
+  /**
+   * triggers drilldown on a link click for hierarchy level with id = `id`
+   * @param {String} id - id in hierarchy
+   * */
   triggerDrilldown(id){
     var hierarchyTargetID = [].slice.call(document.querySelectorAll('input[name*=_hierarchyid]')).find(input=>input.value=this.hierarchyID).id.split('_')[0];
     var nodeIdInput = document.querySelector(`#${hierarchyTargetID}_selnodeid`);
@@ -309,30 +330,6 @@ class LazyHierarchyFetch extends HierarchyBase{
     eventTarget.value=`${hierarchyTargetID}_trigger`;
     window.viewmode?window.viewmode.submit():null;
   }
-
-  static getQueryVariable(variable,query)
-  {
-    var query = query || window.location.search.substring(1);
-    var vars = query.split("&");
-    for (var i=0;i<vars.length;i++) {
-      var pair = vars[i].split("=");
-      if((pair[0]).toLowerCase() == variable.toLowerCase()){return pair[1];}
-    }
-    return(false);
-  }
-
-  /**
-   * @return {Promise} Returns a thenable promise with `XMLHttpRequest.responseText`
-   * */
-  promiseRequest(query){
-    return new Promise((resolve,reject)=>{
-        let xhr = new XMLHttpRequest();
-        xhr.open('GET', query, true);
-        xhr.onload = ()=>{xhr.status == 200?resolve(xhr.responseText):reject(Error(`${xhr.status}: ${xhr.statusText}`));}
-        xhr.onerror = ()=>{reject(Error("Network Error"));}
-        xhr.send();
-    });
-  }
 }
 
-export default DynamicDrilldownFetch
+export default LazyHierarchyFetch

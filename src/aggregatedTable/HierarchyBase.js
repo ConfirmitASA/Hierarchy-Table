@@ -2,23 +2,172 @@
  * Created by IvanP on 15.08.2016.
  */
 import Highlight from '../lib/Highlight.js';
-class HierarchyBase {
-  constructor(){
-    this._collapseEvent = this.constructor.newEvent('reportal-table-hierarchy-collapsed');
-    this._uncollapseEvent = this.constructor.newEvent('reportal-table-hierarchy-uncollapsed');
-    this._flatEvent = this.constructor.newEvent('reportal-table-hierarchy-flat-view');
-    this._treeEvent = this.constructor.newEvent('reportal-table-hierarchy-tree-view');
-  }
+import ReportalBase from '../lib/ReportalBase.js';
+import AggregatedTableRowMeta from './AggregatedTableRowMeta.js';
+/**
+ * @namespace AggregatedTable.Hierarchy
+ * */
+
+/**
+ * @memberof Hierarchy
+ * @extends AggregatedTableRowMeta
+ * @prop {HTMLTableRowElement} row - reference to the `<tr>` element
+ * @prop {String} [flatName] - default string name ('|'-delimited) for hierarchy
+ * @prop {String} name - a trimmed version of `flatName` containing label for this item without parent suffices
+ * @prop {HTMLTableCellElement} nameCell - reference to the `<td>` element that contains the rowheader hierarchical label/name
+ * @prop {String} block - id of the block the row belongs to
+ * @prop {String} parent - internal Reportal id of parent row
+ * @prop {Number} level=0 - level of hierarchy, increments form `0`
+ * @prop {Boolean} hidden - flag set to hidden rows (meaning their parent is in collapsed state)
+ * @prop {Boolean} collapsed - flag only set to rows which have children (`hasChildren=true`)
+ * @prop {Boolean} [matches=false] - flag set to those rows which match `search.query`
+ * @prop {Boolean} [hasChildren] - flag set to rows which contain children
+ * @prop {Array} children - child rows if `hasChildren == true
+ * */
+class HierarchyRowMeta extends AggregatedTableRowMeta{
   /**
-   * Inspects if the current string might be converted to number and renders it as number. If string length is 0, returns `null`. If none applies returns the string as is.
-   * @param {String} str - value of the cell if not HTML contents
-   * @return {Number|null|String}
+   * This function builds a prototype for each row
+   * @param {HTMLTableRowElement} row - reference to the `<tr>` element
+   * @param {String} [flatName] - default string name ('|'-delimited) for hierarchy
+   * @param {String} name - a trimmed version of `flatName` containing label for this item without parent suffices
+   * @param {HTMLTableCellElement} nameCell - reference to the `<td>` element that contains the rowheader hierarchical label/name
+   * @param {String} block - id of the block the row belongs to
+   * @param {String} parent - internal Reportal id of parent row
+   * @param {Number} level=0 - level of hierarchy, increments form `0`
+   * @param {Boolean} hidden - flag set to hidden rows (meaning their parent is in collapsed state)
+   * @param {Boolean} collapsed - flag only set to rows which have children (`hasChildren=true`)
+   * @param {Boolean} [matches=false] - flag set to those rows which match `search.query`
+   * @param {Boolean} [hasChildren] - flag set to rows which contain children
+   * @param {Array} children - child rows if `hasChildren == true
    * */
-  static _isNumber(str){
-    if(!isNaN(parseFloat(str))){
-      str = str.replace(/,/i,'');// remove unnecessary comma as a delimiter for thousands from data.
-      return parseFloat(str);
-    } else if(str.length==0){return null} else {return str}
+  constructor({row, id,  nameCell, name, flatName, block, parent=null, level=0, hidden, collapsed, matches=false, hasChildren, children}={}){
+    super({row, id, nameCell, name, block});
+    if(flatName)this.flatName = flatName;
+    this.parent=parent;
+    if(children)this.children=children;
+    this.level=level;
+
+    this.hasChildren=hasChildren;
+    this.hidden=hidden;
+    this.collapsed=collapsed;
+    this.matches=matches;
+  }
+
+  get hasChildren(){return this._hasChildren}
+  set hasChildren(val){
+    this._hasChildren = val;
+    if(typeof val!=undefined){
+      if(!val){
+        this.row.classList.add('reportal-no-children')
+      } else {
+        this.row.classList.remove('reportal-no-children');
+      }
+    }
+  }
+
+  get hidden(){return this._hidden}
+  set hidden(val){
+    this._hidden=val;
+    if(typeof val!=undefined){
+      if(val){
+        this.row.classList.add("reportal-hidden-row")
+      } else {
+        this.row.classList.remove("reportal-hidden-row")
+      }
+    }
+  }
+
+  /**
+   * @fires HierarchyRowMeta#reportal-table-hierarchy-collapsed
+   * @fires HierarchyRowMeta#reportal-table-hierarchy-uncollapsed
+   * */
+  get collapsed(){return this._collapsed}
+  set collapsed(val){
+    if(typeof val != undefined && this.hasChildren){
+      this._collapsed=val;
+      if(val){
+        this.row.classList.add("reportal-collapsed-row");
+        this.row.classList.remove("reportal-uncollapsed-row");
+        this.toggleHiddenRows();
+        this.row.dispatchEvent(this.constructor._collapseEvent);
+      } else {
+        this.row.classList.add("reportal-uncollapsed-row");
+        this.row.classList.remove("reportal-collapsed-row");
+        this.toggleHiddenRows();
+        this.row.dispatchEvent(this.constructor._uncollapseEvent);
+      }
+    }
+  }
+
+  get matches(){return this._matches}
+  set matches(val){
+    this._matches=val;
+    if(val){
+      this.row.classList.add("matched-search");
+    } else {
+      this.row.classList.contains("matched-search")?this.row.classList.remove("matched-search"):null;
+      if(this.hasChildren){
+        this.collapsed=true;
+      }
+    }
+  }
+
+  /**
+   * Function to hide or show child rows of a collapsed/expanded row
+   * @param {Object} meta - meta in the row
+   */
+  toggleHiddenRows(meta=this){
+    if(meta.hasChildren){
+      meta.children.forEach(childRow=>{
+        if(meta.collapsed){                                           // if parent (`meta.row`) is collapsed
+          childRow.meta.hidden=true;                                  // hide all its children and
+          if(childRow.meta.hasChildren && !childRow.meta.collapsed){  // if a child can be collapsed
+            childRow.meta.collapsed=true;                             // collapse it and
+            meta.toggleHiddenRows(childRow.meta);                     // repeat for its children
+          }
+        } else {                                                      // otherwise make sure we show all children of an expanded row
+          childRow.meta.hidden=false;
+        }
+      });
+    }
+  }
+
+}
+/**
+ * Event fired on `row` when it's collapsed
+ * @event HierarchyRowMeta#reportal-table-hierarchy-collapsed
+ * */
+HierarchyRowMeta._collapseEvent = ReportalBase.newEvent('reportal-table-hierarchy-collapsed');
+/**
+ * Event fired on `row` when it's expanded
+ * @event HierarchyRowMeta#event:reportal-table-hierarchy-uncollapsed
+ * */
+HierarchyRowMeta._uncollapseEvent = ReportalBase.newEvent('reportal-table-hierarchy-uncollapsed');
+
+
+/**
+ * Fired when hierarchy is switched to flattened view
+ * @event HierarchyBase#reportal-table-hierarchy-flat-view
+ */
+/**
+ * Fired when hierarchy is switched to tree view
+ * @event HierarchyBase#reportal-table-hierarchy-tree-view
+ * */
+/**
+ * @memberof Hierarchy
+ * @borrows HierarchyRowMeta as setupMeta
+ * */
+class HierarchyBase extends ReportalBase {
+  /**
+   * @fires HierarchyBase#reportal-table-hierarchy-flat-view
+   * @fires HierarchyBase#reportal-table-hierarchy-tree-view
+   * */
+  constructor(){
+    super();
+
+    this._flatEvent = ReportalBase.newEvent('reportal-table-hierarchy-flat-view');
+    this._treeEvent = ReportalBase.newEvent('reportal-table-hierarchy-tree-view');
+    this.setupMeta=HierarchyRowMeta;
   }
 
   /**
@@ -38,30 +187,9 @@ class HierarchyBase {
   static addCollapseButton(meta){
     var collapseButton = document.createElement("div");
     collapseButton.classList.add("reportal-collapse-button");
-
     collapseButton.addEventListener('click', () => {meta.collapsed = !meta.collapsed;});
-
     meta.nameCell.insertBefore(collapseButton,meta.nameCell.firstChild);
     meta.nameCell.classList.add('reportal-hierarchical-cell');
-  }
-  /**
-   * function to hide or show child rows
-   * @param {Object} meta - meta for the row element in the table
-   */
-  toggleHiddenRows(meta){
-    if(meta.hasChildren){
-      meta.children.forEach(childRow=>{
-        if(meta.collapsed){                                           // if parent (`meta.row`) is collapsed
-          childRow.meta.hidden=true;                                  // hide all its children and
-          if(childRow.meta.hasChildren && !childRow.meta.collapsed){  // if a child can be collapsed
-            childRow.meta.collapsed=true;                             // collapse it and
-            this.toggleHiddenRows(childRow.meta);                     // repeat for its children
-          }
-        } else {                                                      // otherwise make sure we show all children of an expanded row
-          childRow.meta.hidden=false;
-        }
-      });
-    }
   }
 
   /**
@@ -80,13 +208,6 @@ class HierarchyBase {
   }
 
 
-  static newEvent(name){
-    //TODO: refactor this code when event library is added
-    var event = document.createEvent('Event');
-    // Define that the event name is `name`.
-    event.initEvent(name, true, true);
-    return event;
-  }
   /*
    * Collapses all rows which were previously uncollapsed
    * **/
@@ -181,83 +302,6 @@ class HierarchyBase {
     }
   }
 
-  /**
-   * This function builds a prototype for each row
-   * @param {HTMLTableRowElement} row - reference to the `<tr>` element
-   * @param {String} flatName - default string name ('/'-delimited) for hierarchy
-   * @param {String} name - a trimmed version of `flatName` containing label for this item without parent suffices
-   * @param {HTMLTableCellElement} nameCell - reference to the `<td>` element that contains the rowheader hierarchical label/name
-   * @param {String} block - id of the block the row belongs to
-   * @param {Boolean} firstInBlock - whether the row is the first in this block, which meatns it has an extra cell at the beginning
-   * @param {String} parent - internal Reportal id of parent row
-   * @param {Number} level - level of hierarchy, increments form `0`
-   * @param {Boolean} hidden - flag set to hidden rows (meaning their parent is in collapsed state)
-   * @param {Boolean} collapsed - flag only set to rows which have children (`hasChildren=true`)
-   * @param {Boolean} [matches=false] - flag set to those rows which match `search.query`
-   * @param {Boolean} [hasChildren] - flag set to rows which contain children
-   * @param {Array} children - child rows if `hasChildren == true`
-   * */
-  setupMeta({row, id, flatName, name, nameCell, block, firstInBlock, parent, level, hidden, collapsed, matches=false, hasChildren, children}={}){
-    let _hidden, _collapsed, _hasChildren, _matches, self=this, o;
-    o = {
-      row,
-      id,
-      nameCell,
-      flatName,
-      name,
-      block,
-      firstInBlock,
-      parent,
-      children,
-      level,
-      get hasChildren(){return _hasChildren},
-      set hasChildren(val){
-        _hasChildren = val;
-        if(typeof val!=undefined){
-          !val?this.row.classList.add('reportal-no-children'):this.row.classList.remove('reportal-no-children');
-        }
-      },
-      get hidden(){return _hidden},
-      set hidden(val){
-        _hidden=val;
-        typeof val != undefined?val?this.row.classList.add("reportal-hidden-row"):this.row.classList.remove("reportal-hidden-row"):null;
-      },
-      get collapsed(){return _collapsed},
-      set collapsed(val){
-        if(typeof val != undefined && this.hasChildren){
-          _collapsed=val;
-          if(val){
-            this.row.classList.add("reportal-collapsed-row");
-            this.row.classList.remove("reportal-uncollapsed-row");
-            self.toggleHiddenRows(this);
-            this.row.dispatchEvent(self._collapseEvent);
-          } else {
-            this.row.classList.add("reportal-uncollapsed-row");
-            this.row.classList.remove("reportal-collapsed-row");
-            self.toggleHiddenRows(this);
-            this.row.dispatchEvent(self._uncollapseEvent);
-          }
-        }
-      },
-      get matches(){return _matches},
-      set matches(val){
-        _matches=val;
-        if(val){
-          this.row.classList.add("matched-search");
-        } else {
-          this.row.classList.contains("matched-search")?this.row.classList.remove("matched-search"):null;
-          if(this.hasChildren){
-            this.collapsed=true;
-          }
-        }
-      }
-    };
-    o.hasChildren = hasChildren;
-    o.hidden = hidden;
-    o.collapsed = collapsed;
-    o.matches = matches;
-    return o;
-  }
 
   /**
    * Sets `this.flat`, adds/removes `.reportal-heirarchy-flat-view` to the table and updates labels for hierarchy column to flat/hierarchical view
@@ -279,15 +323,11 @@ class HierarchyBase {
       this.search.searching = true; //reinit search
       this.searchRowheaders(this.search.query); //pass the same query
     } else if(this.search && !this.search.searching && !val){
-      this.data.forEach(block=>{block.forEach(row=>this.toggleHiddenRows(row.meta))});
+      this.data.forEach(block=>{block.forEach(row=>row.meta.toggleHiddenRows(row.meta))});
     }
 
     val?this.source.dispatchEvent(this._flatEvent):this.source.dispatchEvent(this._treeEvent)
   }
-  /**
-   * getter for `flat`
-   * @return {Boolean}
-   * */
   get flat(){
     return this._flat;
   }
@@ -317,15 +357,17 @@ class HierarchyBase {
   reorderRows(data,tbody=this.source.querySelector('tbody')){
     data.forEach(block=>{
       block.forEach((row,index,array)=>{
-      if(row.meta.block!=null && index==0 && !row.meta.firstInBlock){ //block is defined and this is the first row in block (and doesn't contain block header already), we need to move block header from whatever line into this row
-      let blockContainer = array.find(item=>item.meta.firstInBlock);
-      blockContainer.meta.firstInBlock = false;
-      row.meta.firstInBlock = true;
-      row.meta.row.insertBefore(row.meta.block.cell, row.meta.row.firstChild);
-    }
-    tbody.appendChild(row.meta.row);
-  })
-  });
+        if(row.meta ){
+          if( row.meta.block!=null && index==0 && !row.meta.firstInBlock){ //block is defined and this is the first row in block (and doesn't contain block header already), we need to move block header from whatever line into this row
+            let blockContainer = array.find(item=>item.meta.firstInBlock);
+            blockContainer.meta.firstInBlock = false;
+            row.meta.firstInBlock = true;
+            row.meta.row.insertBefore(row.meta.block.cell, row.meta.row.firstChild);
+          }
+          tbody.appendChild(row.meta.row);
+        }
+      });
+    });
   }
 
 }
